@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   ClipboardList,
@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Users,
   Eye,
+  BookOpen,
 } from "lucide-react";
 
 import Sidebar from "../components/Sidebar";
@@ -22,10 +23,14 @@ import StudentSubmissionList from "../components/StudentSubmissionList";
 import AssignmentDetails from "../components/AssignmentDetails";
 
 import { useAppContext } from "../context/AppContext";
+import { useToast } from "../context/ToastContext";
 import { students } from "../data/accounts";
 
 function AdminDashboard() {
   const navigate = useNavigate();
+  const { courseId } = useParams();
+
+  const isCoursePage = Boolean(courseId);
 
   const {
     currentUser,
@@ -34,7 +39,11 @@ function AdminDashboard() {
     createAssignment,
     updateAssignment,
     deleteAssignment,
+    courses,
+    groups,
   } = useAppContext();
+
+  const { showToast } = useToast();
 
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [searchTerm, setSearchTerm] = useState("");
@@ -51,31 +60,136 @@ function AdminDashboard() {
     return null;
   }
 
-  // Only show assignments created by the logged-in admin
-  const adminAssignments = assignments.filter(
-    (assignment) => assignment.createdBy === currentUser.id
+  // Find the selected course and verify its professor.
+  const selectedCourse = isCoursePage
+    ? courses.find(
+        (course) =>
+          String(course.id) === String(courseId) &&
+          String(course.createdBy) === String(currentUser.id)
+      )
+    : null;
+
+  if (isCoursePage && !selectedCourse) {
+    return (
+      <div className="min-h-screen bg-[#F7F8F0] flex items-center justify-center p-4">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-[#173D59]">
+            Course not found
+          </h2>
+
+          <button
+            onClick={() => navigate("/admin")}
+            className="mt-4 bg-[#7AAACE] text-[#173D59] px-5 py-2 rounded-xl font-semibold"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Only show courses created by the logged-in professor.
+  const adminCourses = courses.filter(
+    (course) => String(course.createdBy) === String(currentUser.id)
   );
 
-  // Get students assigned to an assignment
-  const getAssignedStudents = (assignment) => {
-    if (assignment.assignedTo === "all") {
-      return students;
-    }
+  // Search courses.
+  const filteredCourses = adminCourses.filter(
+    (course) =>
+      course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      course.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-    return students.filter((student) =>
-      assignment.assignedTo?.includes(student.id)
+  // Only show assignments created by the logged-in professor.
+  const adminAssignments = assignments.filter(
+    (assignment) =>
+      String(assignment.createdBy) === String(currentUser.id)
+  );
+
+  // Assignments belonging to the selected course.
+  const courseAssignments = isCoursePage
+    ? adminAssignments.filter(
+        (assignment) =>
+          String(assignment.courseId) === String(courseId)
+      )
+    : adminAssignments;
+
+  const displayedAssignments = isCoursePage
+    ? courseAssignments
+    : adminAssignments;
+
+  // Check whether a student is assigned to an assignment.
+  const isStudentAssigned = (assignment, studentId) => {
+    if (assignment.assignedTo === "all") return true;
+
+    return assignment.assignedTo?.some(
+      (id) => String(id) === String(studentId)
     );
   };
 
-  // Calculate assignment statistics
+  // Get students assigned to an individual assignment.
+  const getAssignedStudents = (assignment) => {
+    return students.filter((student) =>
+      isStudentAssigned(assignment, student.id)
+    );
+  };
+
+  // Get groups belonging to a group assignment's course.
+  const getAssignedGroups = (assignment) => {
+    if (!assignment.courseId) return [];
+
+    return groups.filter((group) => {
+      const belongsToCourse =
+        String(group.courseId) === String(assignment.courseId);
+
+      const hasAssignedMember = group.members.some((memberId) =>
+        isStudentAssigned(assignment, memberId)
+      );
+
+      return belongsToCourse && hasAssignedMember;
+    });
+  };
+
+  // Check whether a group has acknowledged an assignment.
+  const isGroupSubmitted = (assignment, groupId) => {
+    return (
+      assignment.groupSubmissions?.some(
+        (submission) =>
+          String(submission.groupId) === String(groupId)
+      ) || false
+    );
+  };
+
+  // Calculate assignment statistics.
+  // Individual assignments count students.
+  // Group assignments count groups.
   const getAssignmentStats = (assignment) => {
-    const assignedStudents = getAssignedStudents(assignment);
+    const isGroupAssignment =
+      assignment.submissionType === "group";
 
-    const submitted = assignedStudents.filter((student) =>
-      assignment.submittedBy?.includes(student.id)
-    ).length;
+    let total = 0;
+    let submitted = 0;
 
-    const total = assignedStudents.length;
+    if (isGroupAssignment) {
+      const assignedGroups = getAssignedGroups(assignment);
+
+      total = assignedGroups.length;
+
+      submitted = assignedGroups.filter((group) =>
+        isGroupSubmitted(assignment, group.id)
+      ).length;
+    } else {
+      const assignedStudents = getAssignedStudents(assignment);
+
+      total = assignedStudents.length;
+
+      submitted = assignedStudents.filter((student) =>
+        assignment.submittedBy?.some(
+          (id) => String(id) === String(student.id)
+        )
+      ).length;
+    }
+
     const pending = total - submitted;
 
     const today = new Date().toISOString().split("T")[0];
@@ -86,19 +200,22 @@ function AdminDashboard() {
       submitted,
       pending,
       isPastDue,
+      isGroupAssignment,
       progress:
         total === 0 ? 0 : Math.round((submitted / total) * 100),
     };
   };
 
-  // Overall statistics
+  // Overall statistics.
   const totalExpected = adminAssignments.reduce(
-    (sum, assignment) => sum + getAssignmentStats(assignment).total,
+    (sum, assignment) =>
+      sum + getAssignmentStats(assignment).total,
     0
   );
 
   const totalSubmitted = adminAssignments.reduce(
-    (sum, assignment) => sum + getAssignmentStats(assignment).submitted,
+    (sum, assignment) =>
+      sum + getAssignmentStats(assignment).submitted,
     0
   );
 
@@ -114,7 +231,7 @@ function AdminDashboard() {
       ? 0
       : Math.round((totalSubmitted / totalExpected) * 100);
 
-  // Sidebar counts
+  // Sidebar counts.
   const sidebarCounts = {
     total: adminAssignments.length,
 
@@ -129,40 +246,51 @@ function AdminDashboard() {
     }).length,
   };
 
-  // Create assignment
+  // Create assignment.
   const handleCreateClick = () => {
     setEditingAssignment(null);
     setIsFormOpen(true);
   };
 
-  // Edit assignment
+  // Edit assignment.
   const handleEditClick = (assignment) => {
     setEditingAssignment(assignment);
     setIsFormOpen(true);
   };
 
-  // Save assignment
+  // Save assignment.
   const handleSaveAssignment = (assignmentData) => {
+    const updatedData = selectedCourse
+      ? {
+          ...assignmentData,
+          courseId: selectedCourse.id,
+        }
+      : assignmentData;
+
     if (editingAssignment) {
-      updateAssignment(editingAssignment.id, assignmentData);
+      updateAssignment(editingAssignment.id, updatedData);
+
+      showToast("Assignment updated successfully.", "success");
     } else {
       createAssignment({
-        ...assignmentData,
+        ...updatedData,
         createdBy: currentUser.id,
       });
+
+      showToast("Assignment created successfully.", "success");
     }
 
     setIsFormOpen(false);
     setEditingAssignment(null);
   };
 
-  // Close assignment form
+  // Close assignment form.
   const handleCloseForm = () => {
     setIsFormOpen(false);
     setEditingAssignment(null);
   };
 
-  // Delete assignment
+  // Delete assignment.
   const handleDeleteAssignment = (id) => {
     const confirmed = window.confirm(
       "Are you sure you want to delete this assignment?"
@@ -170,6 +298,8 @@ function AdminDashboard() {
 
     if (confirmed) {
       deleteAssignment(id);
+
+      showToast("Assignment deleted successfully.", "success");
 
       if (detailsAssignment?.id === id) {
         setDetailsAssignment(null);
@@ -182,20 +312,20 @@ function AdminDashboard() {
     }
   };
 
-  // View student submissions
+  // View submissions.
   const handleViewSubmissions = (assignment) => {
     setSelectedAssignment(assignment);
     setIsSubmissionOpen(true);
   };
 
-  // Logout
+  // Logout.
   const handleLogout = () => {
     setCurrentUser(null);
     navigate("/");
   };
 
-  // Filter assignments
-  const filteredAssignments = adminAssignments.filter((assignment) => {
+  // Filter assignments.
+  const filteredAssignments = displayedAssignments.filter((assignment) => {
     const matchesSearch =
       assignment.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       assignment.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -204,26 +334,42 @@ function AdminDashboard() {
 
     let matchesTab = true;
 
-    if (activeTab === "Completed") {
+    if (!isCoursePage && activeTab === "Completed") {
       matchesTab = stats.total > 0 && stats.pending === 0;
-    } else if (activeTab === "Past due") {
+    } else if (!isCoursePage && activeTab === "Past due") {
       matchesTab = stats.isPastDue && stats.pending > 0;
     }
 
     return matchesSearch && matchesTab;
   });
 
-  // Missing past-due submissions
+  // Find missing individual students and pending groups.
   const missingWork = adminAssignments.flatMap((assignment) => {
     const stats = getAssignmentStats(assignment);
 
     if (!stats.isPastDue) return [];
 
+    if (stats.isGroupAssignment) {
+      return getAssignedGroups(assignment)
+        .filter(
+          (group) => !isGroupSubmitted(assignment, group.id)
+        )
+        .map((group) => ({
+          type: "group",
+          group,
+          assignment,
+        }));
+    }
+
     return getAssignedStudents(assignment)
       .filter(
-        (student) => !assignment.submittedBy?.includes(student.id)
+        (student) =>
+          !assignment.submittedBy?.some(
+            (id) => String(id) === String(student.id)
+          )
       )
       .map((student) => ({
+        type: "student",
         student,
         assignment,
       }));
@@ -231,32 +377,42 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F7F8F0] flex">
-
       {/* Sidebar */}
       <Sidebar
         currentUser={currentUser}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+        activeTab={isCoursePage ? "Courses" : activeTab}
+        onTabChange={(tab) => {
+          setSearchTerm("");
+
+          if (isCoursePage) {
+            navigate("/admin");
+          }
+
+          setActiveTab(tab);
+        }}
         onLogout={handleLogout}
         counts={sidebarCounts}
       />
 
       <main className="flex-1 min-w-0 w-full p-5 pt-20 md:p-8">
-
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-[#173D59]">
-              {activeTab}
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-[#173D59] wrap-break-words">
+              {isCoursePage ? selectedCourse.title : activeTab}
             </h1>
 
             <p className="text-sm text-[#526273] mt-1">
-              Manage assignments and track student progress.
+              {isCoursePage
+                ? selectedCourse.description
+                : activeTab === "Courses"
+                ? "Manage your courses and enrolled students."
+                : "Manage assignments and track student progress."}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 md:w-64">
+          <div className="flex items-center gap-3 w-full md:w-auto min-w-0">
+            <div className="relative flex-1 min-w-0 md:flex-none md:w-64">
               <Search
                 size={18}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-[#526273]"
@@ -264,7 +420,11 @@ function AdminDashboard() {
 
               <input
                 type="text"
-                placeholder="Search assignments..."
+                placeholder={
+                  activeTab === "Courses" && !isCoursePage
+                    ? "Search courses..."
+                    : "Search assignments..."
+                }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#E1E6E3] bg-white text-sm outline-none focus:ring-2 focus:ring-[#7AAACE]"
@@ -272,20 +432,42 @@ function AdminDashboard() {
             </div>
 
             <button
-              className="p-3 rounded-xl bg-white border border-[#E1E6E3] text-[#526273]"
+              className="p-3 shrink-0 rounded-xl bg-white border border-[#E1E6E3] text-[#526273]"
               title="Appearance"
             >
               <Moon size={19} />
             </button>
 
-            <div className="w-10 h-10 rounded-full bg-[#7AAACE] text-[#173D59] font-bold flex items-center justify-center">
+            <div className="w-10 h-10 shrink-0 rounded-full bg-[#7AAACE] text-[#173D59] font-bold flex items-center justify-center">
               {currentUser.initials}
             </div>
           </div>
         </div>
 
+        {/* Course Page Information */}
+        {isCoursePage && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-[#526273]">
+                {selectedCourse.enrolledStudents.length} enrolled students
+              </p>
+
+              <p className="text-sm text-[#526273] mt-1">
+                Manage assignments for this course.
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate("/admin")}
+              className="px-4 py-2.5 rounded-xl bg-white border border-[#E5E9E7] text-[#173D59] font-semibold text-sm hover:bg-[#EAF1F4] transition"
+            >
+              Back to Courses
+            </button>
+          </div>
+        )}
+
         {/* Dashboard Overview */}
-        {activeTab === "Dashboard" && (
+        {!isCoursePage && activeTab === "Dashboard" && (
           <>
             {/* Welcome Banner */}
             <div className="bg-[#173D59] rounded-3xl p-6 md:p-8 text-white mb-8 flex flex-col md:flex-row justify-between gap-6">
@@ -295,7 +477,8 @@ function AdminDashboard() {
                 </p>
 
                 <h2 className="text-2xl md:text-3xl font-bold mb-3">
-                  Welcome back, {currentUser.name.split(" ")[1] || currentUser.name}!
+                  Welcome back,{" "}
+                  {currentUser.name.split(" ")[1] || currentUser.name}!
                 </h2>
 
                 <p className="text-sm text-[#D5E3EC] max-w-lg">
@@ -379,190 +562,302 @@ function AdminDashboard() {
               </div>
 
               <div className="flex justify-between text-sm text-[#526273] mt-3">
-                <span>{totalSubmitted} submitted</span>
+                <span>{totalSubmitted} acknowledged</span>
                 <span>{totalPending} pending</span>
               </div>
             </div>
           </>
         )}
 
+        {/* Courses Section */}
+        {!isCoursePage && activeTab === "Courses" && (
+          <section>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-[#173D59]">
+                  My Courses
+                </h2>
+
+                <p className="text-sm text-[#526273] mt-1">
+                  Manage your courses and enrolled students.
+                </p>
+              </div>
+
+              <div className="bg-white border border-[#E5E9E7] rounded-xl px-4 py-2.5 text-sm text-[#526273]">
+                {adminCourses.length} Courses
+              </div>
+            </div>
+
+            {filteredCourses.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-[#E5E9E7] py-14 text-center">
+                <BookOpen
+                  size={38}
+                  className="mx-auto text-[#9BAAB3] mb-3"
+                />
+
+                <p className="font-semibold text-[#173D59]">
+                  No courses found
+                </p>
+
+                <p className="text-sm text-[#526273] mt-1">
+                  Try another search.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filteredCourses.map((course) => {
+                  const enrolledCount = course.enrolledStudents.length;
+
+                  return (
+                    <button
+                      key={course.id}
+                      onClick={() =>
+                        navigate(`/admin/courses/${course.id}`)
+                      }
+                      className="w-full text-left bg-white rounded-2xl border border-[#E5E9E7] p-6 hover:shadow-md hover:border-[#7AAACE] transition duration-200"
+                    >
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="w-12 h-12 rounded-xl bg-[#EAF1F4] flex items-center justify-center text-[#397BA6]">
+                          <BookOpen size={24} />
+                        </div>
+
+                        <span className="text-xs font-semibold bg-[#EAF1F4] text-[#397BA6] px-3 py-1.5 rounded-full">
+                          Active Course
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-[#173D59] mb-2">
+                        {course.title}
+                      </h3>
+
+                      <p className="text-sm text-[#526273] leading-relaxed min-h-12">
+                        {course.description}
+                      </p>
+
+                      <div className="border-t border-[#E5E9E7] mt-5 pt-4 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm text-[#526273]">
+                          <Users size={17} />
+
+                          <span>
+                            {enrolledCount} Enrolled Students
+                          </span>
+                        </div>
+
+                        <span className="text-xs font-semibold text-[#397BA6]">
+                          Course #{course.id}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Assignments Table */}
-        <div className="bg-white rounded-2xl border border-[#E5E9E7] overflow-hidden">
-          <div className="p-5 md:p-6 flex flex-col sm:flex-row justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold text-[#173D59]">
-                {activeTab === "Dashboard" ? "Your Assignments" : activeTab}
-              </h3>
+        {(isCoursePage || activeTab !== "Courses") && (
+          <div className="bg-white rounded-2xl border border-[#E5E9E7] overflow-hidden">
+            <div className="p-5 md:p-6 flex flex-col sm:flex-row justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-[#173D59]">
+                  {isCoursePage
+                    ? "Course Assignments"
+                    : activeTab === "Dashboard"
+                    ? "Your Assignments"
+                    : activeTab}
+                </h3>
 
-              <p className="text-sm text-[#526273] mt-1">
-                View and manage your assignments.
-              </p>
+                <p className="text-sm text-[#526273] mt-1">
+                  {isCoursePage
+                    ? "View and manage assignments for this course."
+                    : "View and manage your assignments."}
+                </p>
+              </div>
+
+              <button
+                onClick={handleCreateClick}
+                className="bg-[#7AAACE] text-[#173D59] px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-[#A4C7E0] transition flex items-center justify-center gap-2"
+              >
+                <Plus size={17} />
+                Add Assignment
+              </button>
             </div>
 
-            <button
-              onClick={handleCreateClick}
-              className="bg-[#7AAACE] text-[#173D59] px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-[#A4C7E0] transition flex items-center justify-center gap-2"
-            >
-              <Plus size={17} />
-              Add Assignment
-            </button>
-          </div>
+            {filteredAssignments.length === 0 ? (
+              <div className="py-14 text-center">
+                <ClipboardList
+                  size={38}
+                  className="mx-auto text-[#9BAAB3] mb-3"
+                />
 
-          {filteredAssignments.length === 0 ? (
-            <div className="py-14 text-center">
-              <ClipboardList
-                size={38}
-                className="mx-auto text-[#9BAAB3] mb-3"
-              />
+                <p className="font-semibold text-[#173D59]">
+                  No assignments found
+                </p>
 
-              <p className="font-semibold text-[#173D59]">
-                No assignments found
-              </p>
+                <p className="text-sm text-[#526273] mt-1">
+                  {isCoursePage
+                    ? "Create the first assignment for this course."
+                    : "Create an assignment or try another search."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left min-w-212.5">
+                  <thead className="bg-[#F7F8F0] text-[#526273] text-xs uppercase">
+                    <tr>
+                      <th className="px-6 py-4">Assignment</th>
+                      <th className="px-6 py-4">Assigned To</th>
+                      <th className="px-6 py-4">Due Date</th>
+                      <th className="px-6 py-4">Progress</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Actions</th>
+                    </tr>
+                  </thead>
 
-              <p className="text-sm text-[#526273] mt-1">
-                Create an assignment or try another search.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left min-w-212.5">
-                <thead className="bg-[#F7F8F0] text-[#526273] text-xs uppercase">
-                  <tr>
-                    <th className="px-6 py-4">Assignment</th>
-                    <th className="px-6 py-4">Assigned To</th>
-                    <th className="px-6 py-4">Due Date</th>
-                    <th className="px-6 py-4">Progress</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Actions</th>
-                  </tr>
-                </thead>
+                  <tbody className="divide-y divide-[#E5E9E7]">
+                    {filteredAssignments.map((assignment) => {
+                      const stats = getAssignmentStats(assignment);
 
-                <tbody className="divide-y divide-[#E5E9E7]">
-                  {filteredAssignments.map((assignment) => {
-                    const stats = getAssignmentStats(assignment);
+                      return (
+                        <tr
+                          key={assignment.id}
+                          className="hover:bg-[#FAFBF8] transition"
+                        >
+                          <td className="px-6 py-5">
+                            <button
+                              onClick={() =>
+                                setDetailsAssignment(assignment)
+                              }
+                              className="font-semibold text-[#173D59] hover:text-[#397BA6] hover:underline text-left transition"
+                            >
+                              {assignment.title}
+                            </button>
 
-                    return (
-                      <tr
-                        key={assignment.id}
-                        className="hover:bg-[#FAFBF8] transition"
-                      >
-                        <td className="px-6 py-5">
-                          {/* Clickable Assignment Title */}
-                          <button
-                            onClick={() =>
-                              setDetailsAssignment(assignment)
-                            }
-                            className="font-semibold text-[#173D59] hover:text-[#397BA6] hover:underline text-left transition"
-                          >
-                            {assignment.title}
-                          </button>
+                            <p className="text-xs text-[#526273] mt-1 max-w-xs truncate">
+                              {assignment.description}
+                            </p>
 
-                          <p className="text-xs text-[#526273] mt-1 max-w-xs truncate">
-                            {assignment.description}
-                          </p>
-                        </td>
+                            <span className="inline-block mt-2 text-[10px] font-semibold bg-[#EAF1F4] text-[#397BA6] px-2 py-1 rounded-full">
+                              {stats.isGroupAssignment
+                                ? "Group"
+                                : "Individual"}
+                            </span>
+                          </td>
 
-                        <td className="px-6 py-5 text-sm text-[#526273]">
-                          {assignment.assignedTo === "all"
-                            ? "All Students"
-                            : `${stats.total} Students`}
-                        </td>
+                          <td className="px-6 py-5 text-sm text-[#526273]">
+                            {stats.isGroupAssignment
+                              ? `${stats.total} Groups`
+                              : assignment.assignedTo === "all"
+                              ? "All Students"
+                              : `${stats.total} Students`}
+                          </td>
 
-                        <td className="px-6 py-5 text-sm text-[#526273]">
-                          {assignment.dueDate}
-                        </td>
+                          <td className="px-6 py-5 text-sm text-[#526273]">
+                            {assignment.dueDate}
+                            {assignment.dueTime && (
+                              <p className="text-xs text-[#526273] mt-1">
+                                {assignment.dueTime}
+                              </p>
+                            )}
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-24 h-2 bg-[#EAF0F2] rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-[#7AAACE] rounded-full"
-                                style={{
-                                  width: `${stats.progress}%`,
-                                }}
-                              />
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-24 h-2 bg-[#EAF0F2] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-[#7AAACE] rounded-full"
+                                  style={{
+                                    width: `${stats.progress}%`,
+                                  }}
+                                />
+                              </div>
+
+                              <span className="text-xs font-semibold text-[#173D59]">
+                                {stats.progress}%
+                              </span>
                             </div>
 
-                            <span className="text-xs font-semibold text-[#173D59]">
-                              {stats.progress}%
-                            </span>
-                          </div>
+                            <p className="text-xs text-[#526273] mt-1">
+                              {stats.submitted}/{stats.total}{" "}
+                              {stats.isGroupAssignment
+                                ? "groups acknowledged"
+                                : "students submitted"}
+                            </p>
+                          </td>
 
-                          <p className="text-xs text-[#526273] mt-1">
-                            {stats.submitted}/{stats.total} submitted
-                          </p>
-                        </td>
+                          <td className="px-6 py-5">
+                            {stats.pending === 0 && stats.total > 0 ? (
+                              <span className="text-xs font-semibold bg-[#E5F4EA] text-[#287343] px-3 py-1.5 rounded-full">
+                                Completed
+                              </span>
+                            ) : stats.isPastDue ? (
+                              <span className="text-xs font-semibold bg-[#FCE9E7] text-[#B5473B] px-3 py-1.5 rounded-full">
+                                Past Due
+                              </span>
+                            ) : (
+                              <span className="text-xs font-semibold bg-[#FFF3D9] text-[#956B16] px-3 py-1.5 rounded-full">
+                                In Progress
+                              </span>
+                            )}
+                          </td>
 
-                        <td className="px-6 py-5">
-                          {stats.pending === 0 && stats.total > 0 ? (
-                            <span className="text-xs font-semibold bg-[#E5F4EA] text-[#287343] px-3 py-1.5 rounded-full">
-                              Completed
-                            </span>
-                          ) : stats.isPastDue ? (
-                            <span className="text-xs font-semibold bg-[#FCE9E7] text-[#B5473B] px-3 py-1.5 rounded-full">
-                              Past Due
-                            </span>
-                          ) : (
-                            <span className="text-xs font-semibold bg-[#FFF3D9] text-[#956B16] px-3 py-1.5 rounded-full">
-                              In Progress
-                            </span>
-                          )}
-                        </td>
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() =>
+                                  handleViewSubmissions(assignment)
+                                }
+                                className="text-[#526273] hover:text-[#397BA6]"
+                                title={
+                                  stats.isGroupAssignment
+                                    ? "View group acknowledgements"
+                                    : "View student submissions"
+                                }
+                              >
+                                <Eye size={17} />
+                              </button>
 
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            {/* View Submissions */}
-                            <button
-                              onClick={() =>
-                                handleViewSubmissions(assignment)
-                              }
-                              className="text-[#526273] hover:text-[#397BA6]"
-                              title="View student submissions"
-                            >
-                              <Eye size={17} />
-                            </button>
+                              <button
+                                onClick={() =>
+                                  handleEditClick(assignment)
+                                }
+                                className="text-[#526273] hover:text-[#397BA6]"
+                                title="Edit assignment"
+                              >
+                                <Pencil size={17} />
+                              </button>
 
-                            {/* Edit */}
-                            <button
-                              onClick={() =>
-                                handleEditClick(assignment)
-                              }
-                              className="text-[#526273] hover:text-[#397BA6]"
-                              title="Edit assignment"
-                            >
-                              <Pencil size={17} />
-                            </button>
-
-                            {/* Delete */}
-                            <button
-                              onClick={() =>
-                                handleDeleteAssignment(assignment.id)
-                              }
-                              className="text-[#526273] hover:text-red-600"
-                              title="Delete assignment"
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                              <button
+                                onClick={() =>
+                                  handleDeleteAssignment(assignment.id)
+                                }
+                                className="text-[#526273] hover:text-red-600"
+                                title="Delete assignment"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Missing Submissions */}
-        {activeTab === "Dashboard" && (
+        {!isCoursePage && activeTab === "Dashboard" && (
           <div className="bg-white rounded-2xl border border-[#E5E9E7] p-6 mt-8">
             <h3 className="text-lg font-bold text-[#173D59] mb-1">
               Missing Submissions
             </h3>
 
             <p className="text-sm text-[#526273] mb-5">
-              Students who have not submitted past-due assignments.
+              Students and groups who have not acknowledged past-due assignments.
             </p>
 
             {missingWork.length === 0 ? (
@@ -571,29 +866,52 @@ function AdminDashboard() {
               </p>
             ) : (
               <div className="space-y-3">
-                {missingWork.map(({ student, assignment }) => (
+                {missingWork.map((item) => (
                   <div
-                    key={`${assignment.id}-${student.id}`}
+                    key={
+                      item.type === "group"
+                        ? `${item.assignment.id}-${item.group.id}`
+                        : `${item.assignment.id}-${item.student.id}`
+                    }
                     className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-[#F7F8F0]"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#7AAACE] text-[#173D59] flex items-center justify-center font-bold text-sm">
-                        {student.initials}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 shrink-0 rounded-full bg-[#7AAACE] text-[#173D59] flex items-center justify-center font-bold text-sm">
+                        {item.type === "group"
+                          ? item.group.name.slice(0, 2).toUpperCase()
+                          : item.student.initials}
                       </div>
 
-                      <div>
-                        <p className="font-semibold text-sm text-[#173D59]">
-                          {student.name}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-[#173D59] wrap-break-words">
+                          {item.type === "group"
+                            ? item.group.name
+                            : item.student.name}
                         </p>
 
-                        <p className="text-xs text-[#526273]">
-                          {assignment.title}
+                        <p className="text-xs text-[#526273] wrap-break-words">
+                          {item.assignment.title}
                         </p>
+
+                        {item.type === "group" && (
+                          <p className="text-xs text-[#526273] mt-1">
+                            Leader:{" "}
+                            {
+                              students.find(
+                                (student) =>
+                                  String(student.id) ===
+                                  String(item.group.leaderId)
+                              )?.name || "Unknown Student"
+                            }
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    <span className="text-xs font-semibold text-[#B5473B] bg-[#FCE9E7] px-3 py-1.5 rounded-full self-start sm:self-center">
-                      Not Submitted
+                    <span className="text-xs font-semibold text-[#B5473B] bg-[#FCE9E7] px-3 py-1.5 rounded-full self-start sm:self-center shrink-0">
+                      {item.type === "group"
+                        ? "Group Pending"
+                        : "Not Submitted"}
                     </span>
                   </div>
                 ))}
@@ -609,9 +927,10 @@ function AdminDashboard() {
         onClose={handleCloseForm}
         onSave={handleSaveAssignment}
         editingAssignment={editingAssignment}
+        course={selectedCourse}
       />
 
-      {/* Student Submission Modal */}
+      {/* Student / Group Submission Modal */}
       <StudentSubmissionList
         assignment={isSubmissionOpen ? selectedAssignment : null}
         onClose={() => {

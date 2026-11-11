@@ -1,48 +1,52 @@
-# Schoolytics – Student Assignment Management System
+# Schoolytics — Student & Professor Dashboard
 
-Schoolytics is a responsive assignment management dashboard designed to simplify communication between students and administrators. It allows administrators to create and manage assignments, track student submissions, and monitor class progress, while students can view their assigned work and update their submission status.
+Schoolytics is a responsive academic management platform built with React and Tailwind CSS. It provides separate dashboards for students and professors to manage courses, assignments, groups, and submission progress.
+
+## Live Demo
+
+[Open Schoolytics](https://schoolytics.vercel.app/)
 
 ## Features
 
-### Student Dashboard
-- View assignments assigned to the logged-in student.
-- Search and view assignment details.
-- Check assignment deadlines and submission status.
-- Access assignment resources through Google Drive links.
-- Submit assignments using a two-step confirmation process.
-- Track overall submission progress.
-- Retain submission status after refreshing the browser.
+### Authentication
+- Student and Professor role selection.
+- Login and registration forms with validation.
+- Simulated JWT-based authentication.
+- Protected routes and role-based dashboard access.
+- Demo account selection.
 
-### Admin Dashboard
+### Professor Dashboard
+- Create, edit, and delete courses.
 - Create, edit, and delete assignments.
-- Assign work to all students or selected students.
-- View only assignments created by the logged-in administrator.
-- Track individual student submission statuses.
-- View submitted and pending counts.
-- Monitor class completion through progress bars.
-- View assignment details and student-wise submission reports.
+- Assign work to all or selected enrolled students.
+- Support individual and group assignments.
+- Track student submissions and pending work.
+- View course and assignment progress.
+
+### Student Dashboard
+- View enrolled courses and assigned work.
+- Acknowledge individual assignments.
+- Create or join groups within courses.
+- View group members and group assignment status.
+- Only group leaders can acknowledge group assignments.
+- Identify overdue, pending, and completed assignments.
 
 ### Additional Features
-- Separate Student and Admin login experiences.
-- Demo accounts for testing both roles.
-- Responsive interface for desktop and mobile devices.
-- Persistent application data using LocalStorage.
+- Responsive layout for desktop and mobile.
+- Search and status filters.
+- Toast notifications.
+- Persistent demo data using browser localStorage.
 
 ## Tech Stack
 
-| Technology | Purpose |
-|---|---|
-| React.js | Frontend development |
-| Vite | Development server and build tool |
-| Tailwind CSS | Responsive styling |
-| React Router | Client-side navigation |
-| Context API | Global state management |
-| LocalStorage | Client-side data persistence |
-| Lucide React | Icons |
+- React
+- JavaScript
+- Tailwind CSS
+- React Router
+- Lucide React
+- Browser localStorage
 
 ## Getting Started
-
-Follow these steps to run Schoolytics locally.
 
 ### 1. Clone the repository
 
@@ -68,148 +72,53 @@ npm install
 npm run dev
 ```
 
-Open the local URL displayed in your terminal, usually:
+Open the local URL shown in your terminal.
+
+## Project Structure
 
 ```text
-http://localhost:5173
+src/
+├── components/
+│   ├── AssignmentDetails.jsx
+│   ├── AssignmentForm.jsx
+│   ├── AssignmentTable.jsx
+│   ├── ConfirmDialog.jsx
+│   ├── Navbar.jsx
+│   ├── Progressbar.jsx
+│   ├── Sidebar.jsx
+│   ├── StudentSubmissionList.jsx
+│   └── ProtectedRoute.jsx
+│
+├── context/
+│   ├── AppContext.jsx
+│   └── ToastContext.jsx
+│
+├── data/
+│   ├── accounts.js
+│   ├── initialAssignments.js
+│   └── initialCourses.js
+│
+├── pages/
+│   ├── AdminDashboard.jsx
+│   ├── Login.jsx
+│   └── StudentDashboard.jsx
+│
+└── App.jsx
 ```
 
-### 5. Create a production build
+## Authentication & Data
 
-```bash
-npm run build
-```
-
-## Project Folder Structure
-
-```text
-Schoolytics/
-│
-├── public/
-│
-├── src/
-│   ├── assets/
-│   │
-│   ├── components/
-│   │   ├── AssignmentDetails.jsx
-│   │   ├── AssignmentForm.jsx
-│   │   ├── AssignmentTable.jsx
-│   │   ├── ConfirmDialog.jsx
-│   │   ├── Navbar.jsx
-│   │   ├── Progressbar.jsx
-│   │   ├── Sidebar.jsx
-│   │   └── StudentSubmissionList.jsx
-│   │
-│   ├── context/
-│   │   └── AppContext.jsx
-│   │
-│   ├── data/
-│   │   ├── accounts.js
-│   │   └── initialAssignments.js
-│   │
-│   ├── pages/
-│   │   ├── AdminDashboard.jsx
-│   │   ├── Login.jsx
-│   │   └── StudentDashboard.jsx
-│   │
-│   ├── App.jsx
-│   ├── App.css
-│   ├── index.css
-│   └── main.jsx
-│
-├── .gitignore
-├── index.html
-├── package.json
-├── package-lock.json
-└── vite.config.js
-```
-
-## Component Architecture
-
-### 1. Pages
-
-- **Login.jsx:** Provides role selection and demo account selection for students and administrators.
-- **StudentDashboard.jsx:** Displays student-specific assignments, deadlines, submission status, and progress.
-- **AdminDashboard.jsx:** Provides assignment management, class progress tracking, and student submission reports.
-
-### 2. Reusable Components
-
-- **Sidebar.jsx:** Provides role-based navigation.
-- **Navbar.jsx:** Displays dashboard navigation and user information.
-- **AssignmentForm.jsx:** Handles assignment creation and editing.
-- **AssignmentDetails.jsx:** Displays assignment information and submission progress.
-- **AssignmentTable.jsx:** Displays assignment records.
-- **StudentSubmissionList.jsx:** Displays individual student submission statuses.
-- **ConfirmDialog.jsx:** Handles the two-step submission confirmation.
-- **Progressbar.jsx:** Visualizes assignment completion progress.
-
-### 3. Context API
-
-`AppContext.jsx` manages shared application state, including:
-
-- Current logged-in user.
-- Assignment records.
-- Assignment creation, editing, and deletion.
-- Student submission updates.
-
-This avoids unnecessary prop drilling and allows different components to access shared application data.
-
-### 4. Data Management
-
-The `data/` directory contains:
-
-- `accounts.js`: Demo student and administrator accounts.
-- `initialAssignments.js`: Initial assignment records.
-
-## Key Design Decisions
-
-### Role-Based Dashboards
-
-Separate dashboards are provided for students and administrators to keep their interfaces focused on their respective responsibilities.
-
-### Context API for State Management
-
-React Context API is used to share user and assignment information across the application without passing props through multiple component levels.
-
-### LocalStorage Persistence
-
-LocalStorage is used to preserve assignment information, login state, and submission updates across browser refreshes.
-
-### Responsive Design
-
-The interface is designed to work across desktop, tablet, and mobile screen sizes using Tailwind CSS responsive utilities.
-
-### Reusable Components
-
-Common functionality is separated into reusable components to improve maintainability, readability, and consistency.
-
-## Important Project Limitation
-
-Schoolytics currently uses browser LocalStorage for data persistence and does not have a backend or centralized database.
-
-This means:
-
-- Data is stored locally in the browser.
-- Changes are not synchronized between different devices or browsers.
-- Demo accounts are intended for demonstration purposes.
-- Authentication is not production-grade.
-
-A backend with database integration and secure authentication would be required for a real multi-user deployment.
+This project is a frontend demonstration. Authentication uses a simulated JWT token, and application data is stored in browser localStorage. It does not currently use a production backend or real server-side authentication.
 
 ## Future Improvements
 
-- Backend integration with Node.js and Express.
-- MongoDB database integration.
-- Secure authentication and authorization.
-- Real-time assignment and submission updates.
-- Notifications for upcoming deadlines.
-- File upload functionality.
+- Integrate a backend API and database.
+- Implement real authentication and authorization.
+- Add file upload and assignment submission support.
+- Add email notifications and deadline reminders.
 
-## Repository
+## Author
 
-GitHub: https://github.com/The-Only-Ayush/Schoolytics
+**Ayush Singh**
 
----
-
-**Developed by Ayush Singh**  
-Schoolytics – Student Assignment Management System
+- GitHub: [The-Only-Ayush](https://github.com/The-Only-Ayush)

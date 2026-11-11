@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   Menu,
   X,
+  BookOpen,
+  Users,
 } from "lucide-react";
 
 function Sidebar({
@@ -26,11 +28,11 @@ function Sidebar({
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Different navigation items for Student and Admin
   const menuItems =
     currentUser?.role === "admin"
       ? [
           { name: "Dashboard", icon: LayoutDashboard, count: null },
+          { name: "Courses", icon: BookOpen, count: null },
           { name: "Assignments", icon: ClipboardList, count: counts.total },
           { name: "Completed", icon: CheckCircle2, count: counts.completed },
           { name: "Past due", icon: AlertTriangle, count: counts.pending },
@@ -38,6 +40,7 @@ function Sidebar({
       : [
           { name: "Dashboard", icon: LayoutDashboard, count: null },
           { name: "Assignments", icon: ClipboardList, count: counts.total },
+          { name: "Groups", icon: Users, count: null },
           { name: "Completed", icon: CheckCircle2, count: counts.completed },
           { name: "Pending", icon: Clock, count: counts.pending },
         ];
@@ -47,6 +50,11 @@ function Sidebar({
     setIsOpen(false);
   };
 
+  const handleLogout = () => {
+    setIsOpen(false);
+    onLogout();
+  };
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -54,6 +62,8 @@ function Sidebar({
         onClick={() => setIsOpen(!isOpen)}
         className="md:hidden fixed top-4 left-4 z-60 bg-white text-[#173D59] p-3 rounded-xl shadow-md border border-[#E5E9E7]"
         aria-label={isOpen ? "Close menu" : "Open menu"}
+        aria-expanded={isOpen}
+        aria-controls="app-sidebar"
       >
         {isOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
@@ -63,27 +73,31 @@ function Sidebar({
         <div
           onClick={() => setIsOpen(false)}
           className="md:hidden fixed inset-0 bg-black/40 z-40"
+          aria-hidden="true"
         />
       )}
 
       {/* Sidebar */}
       <aside
+        id="app-sidebar"
         className={`
           fixed md:sticky
           top-0 left-0
           z-50 md:z-auto
-          w-70
+          w-72 md:w-70
+          max-w-[85vw]
           h-screen
           bg-white
           border-r border-[#E5E9E7]
           flex flex-col shrink-0
           overflow-y-auto
+          pt-16 md:pt-0
           transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           md:translate-x-0
         `}
       >
-        {/* Logo */}
+        {/* Brand */}
         <div className="flex items-center gap-3 px-7 py-7">
           <div className="bg-[#7AAACE] text-[#173D59] p-2.5 rounded-xl">
             <Check size={25} strokeWidth={3} />
@@ -135,13 +149,10 @@ function Sidebar({
         {/* User Profile and Logout */}
         <div className="mt-auto p-4">
           <div className="flex items-center gap-3 bg-[#F0F1E8] rounded-2xl p-3">
-
-            {/* Initials */}
             <div className="w-10 h-10 rounded-full bg-[#7AAACE] flex items-center justify-center text-sm font-bold text-[#173D59] shrink-0">
               {currentUser?.initials || "U"}
             </div>
 
-            {/* User Details */}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-[#173D59] truncate">
                 {currentUser?.name}
@@ -152,15 +163,14 @@ function Sidebar({
               </p>
             </div>
 
-            {/* Logout */}
             <button
-              onClick={onLogout}
+              onClick={handleLogout}
               title="Logout"
+              aria-label="Logout"
               className="text-[#526273] hover:text-red-600 transition"
             >
               <LogOut size={19} />
             </button>
-
           </div>
         </div>
       </aside>
