@@ -260,6 +260,15 @@ function AdminDashboard() {
 
   // Save assignment.
   const handleSaveAssignment = (assignmentData) => {
+    // Group assignments must belong to a course because groups are course-specific.
+    if (assignmentData.submissionType === "group" && !selectedCourse && !assignmentData.courseId) {
+      showToast(
+        "Please open a course first before creating a group assignment.",
+        "error"
+      );
+      return;
+    }
+
     const updatedData = selectedCourse
       ? {
           ...assignmentData,

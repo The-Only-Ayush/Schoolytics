@@ -107,6 +107,14 @@ function StudentDashboard() {
     );
   };
 
+  // Get individual acknowledgement details, including its timestamp.
+  const getIndividualSubmission = (assignment) => {
+    return (assignment.individualSubmissions || []).find(
+      (submission) =>
+        String(submission.studentId) === String(currentUser.id)
+    );
+  };
+
   // Get student details
   const getStudentDetails = (studentId) => {
     if (String(studentId) === String(currentUser.id)) {
@@ -968,6 +976,10 @@ function StudentDashboard() {
                           studentGroup &&
                           getGroupSubmission(assignment, studentGroup);
 
+                        const individualSubmission = !isGroupAssignment
+                          ? getIndividualSubmission(assignment)
+                          : null;
+
                         const isGroupLeader =
                           studentGroup &&
                           String(studentGroup.leaderId) ===
@@ -1030,8 +1042,17 @@ function StudentDashboard() {
                                   </span>
 
                                   {isGroupAssignment && groupSubmission && (
+                                    <div className="text-xs text-[#526273] max-w-52">
+                                      <p>By {leader?.name || "Group Leader"}</p>
+                                      <p className="mt-1">
+                                        on {new Date(groupSubmission.acknowledgedAt).toLocaleString()}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {!isGroupAssignment && individualSubmission?.acknowledgedAt && (
                                     <p className="text-xs text-[#526273] max-w-52">
-                                      By {leader?.name || "Group Leader"}
+                                      Acknowledged on {new Date(individualSubmission.acknowledgedAt).toLocaleString()}
                                     </p>
                                   )}
                                 </div>

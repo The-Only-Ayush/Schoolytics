@@ -263,9 +263,19 @@ export function AppProvider({ children }) {
           return assignment;
         }
 
+        const individualSubmissions = assignment.individualSubmissions || [];
+        const acknowledgedAt = new Date().toISOString();
+
         return {
           ...assignment,
           submittedBy: [...submittedBy, studentId],
+          individualSubmissions: [
+            ...individualSubmissions,
+            {
+              studentId,
+              acknowledgedAt,
+            },
+          ],
         };
       })
     );
@@ -625,3 +635,6 @@ export function AppProvider({ children }) {
     </AppContext.Provider>
   );
 }
+
+
+
